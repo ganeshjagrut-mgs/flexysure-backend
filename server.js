@@ -64,7 +64,7 @@ app.get('/health', (req, res) => {
 });
 
 // DMVIC Certificate Issuance Proxy Endpoint
-app.post('/dmvic/certificate/issue', validateApiKey, async (req, res) => {
+app.post('/dmvic/certificate/issue', async (req, res) => {
   try {
     // Validate required fields
     const requiredFields = ['token', 'clientId', 'certificateRequest'];
