@@ -27,6 +27,12 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
+// Basic request logging (no sensitive data)
+app.use((req, res, next) => {
+  const { method, originalUrl } = req;
+  console.log(`[${new Date().toISOString()}] ${method} ${originalUrl}`);
+  next();
+});
 
 // Security middleware - API Key validation
 const validateApiKey = (req, res, next) => {
