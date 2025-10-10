@@ -64,7 +64,7 @@ app.get('/health', (req, res) => {
 });
 
 // DMVIC Certificate Issuance Proxy Endpoint
-app.post('/dmvic/certificate/issue', validateApiKey, async (req, res) => {
+app.post('/dmvic/certificate/issue', async (req, res) => {
   try {
     // Validate required fields
     const requiredFields = ['token', 'clientId', 'certificateRequest'];
@@ -411,7 +411,7 @@ app.post('/dmvic/certificate/get', async (req, res) => {
 });
 
 // KRA Token Generation endpoint
-app.post('/kra/token/generate', validateApiKey, async (req, res) => {
+app.post('/kra/token/generate', async (req, res) => {
   try {
     // Get KRA credentials from environment
     const kraUsername = process.env.KRA_USERNAME;
@@ -469,7 +469,7 @@ app.post('/kra/token/generate', validateApiKey, async (req, res) => {
 });
 
 // KRA PIN Validation endpoint
-app.post('/kra/pin/validate', validateApiKey, async (req, res) => {
+app.post('/kra/pin/validate', async (req, res) => {
   try {
     const { kraPin, accessToken } = req.body;
 
