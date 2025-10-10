@@ -19,7 +19,14 @@ const PORT = process.env.PORT || 3001;
 
 // CORS configuration
 const corsOptions = {
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:54321', 'http://127.0.0.1:54321','/*'],
+  origin: process.env.ALLOWED_ORIGINS?.split(',') || [
+    'http://localhost:54321',
+    'http://127.0.0.1:54321',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'https://flexysure.com',
+    '/*'
+  ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key']
@@ -278,7 +285,7 @@ app.post('/dmvic/certificate/confirm', async (req, res) => {
 
     // Validate confirmation request structure
     const { IssuanceRequestID } = confirmationRequest;
-    
+
     if (!IssuanceRequestID) {
       return res.status(400).json({
         error: 'Missing IssuanceRequestID in confirmationRequest'
@@ -286,7 +293,7 @@ app.post('/dmvic/certificate/confirm', async (req, res) => {
     }
 
     const certPath = path.join(__dirname, 'certs', 'dmvic-client.p12');
-    
+
     if (!fs.existsSync(certPath)) {
       throw new Error('Client certificate not found. Run: node setup-certs.js');
     }
@@ -347,7 +354,7 @@ app.post('/dmvic/certificate/get', async (req, res) => {
     const { token, clientId, apimSubscriptionKey, certificateNumber } = req.body;
 
     // Validate required fields
-    if (!token || !clientId  || !certificateNumber) {
+    if (!token || !clientId || !certificateNumber) {
       return res.status(400).json({
         error: 'Missing required fields',
         required: ['token', 'clientId', 'apimSubscriptionKey', 'certificateNumber']
@@ -355,7 +362,7 @@ app.post('/dmvic/certificate/get', async (req, res) => {
     }
 
     const certPath = path.join(__dirname, 'certs', 'dmvic-client.p12');
-    
+
     if (!fs.existsSync(certPath)) {
       throw new Error('Client certificate not found. Run: node setup-certs.js');
     }
@@ -416,17 +423,17 @@ app.post('/kra/token/generate', async (req, res) => {
     // Get KRA credentials from environment
     const kraUsername = process.env.KRA_USERNAME;
     const kraPassword = process.env.KRA_PASSWORD;
-    
+
     if (!kraUsername || !kraPassword) {
       return res.status(500).json({
         error: 'Configuration error',
         message: 'KRA credentials not configured'
       });
     }
-    
+
     // Create Basic auth header from username and password
     const credentials = Buffer.from(`${kraUsername}:${kraPassword}`).toString('base64');
-    
+
     // Make the HTTPS request to KRA API
     const result = await makeKRARequest({
       url: 'https://sbx.kra.go.ke/v1/token/generate?grant_type=client_credentials',
