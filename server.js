@@ -64,7 +64,7 @@ app.get('/health', (req, res) => {
 });
 
 // DMVIC Certificate Issuance Proxy Endpoint
-app.post('/dmvic/certificate/issue', async (req, res) => {
+app.post('/dmvic/certificate/issue', validateApiKey, async (req, res) => {
   try {
     // Validate required fields
     const requiredFields = ['token', 'clientId', 'certificateRequest'];
@@ -187,6 +187,61 @@ function makeDMVICRequest({ url, method, headers, data, cert, passphrase }) {
 
     req.on('error', (error) => {
       console.error('🔴 HTTPS request error:', error);
+      reject(error);
+    });
+
+    // Send request data
+    if (data && (method === 'POST' || method === 'PUT')) {
+      req.write(JSON.stringify(data));
+    }
+
+    req.end();
+  });
+}
+
+// Make HTTPS request for KRA API (no client certificate required)
+function makeKRARequest({ url, method, headers, data }) {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url);
+
+    const options = {
+      hostname: urlObj.hostname,
+      port: urlObj.port || 443,
+      path: urlObj.pathname + urlObj.search,
+      method: method,
+      headers: headers,
+      // SSL options
+      rejectUnauthorized: true,
+      secureProtocol: 'TLS_method'
+    };
+
+    const req = https.request(options, (res) => {
+      let responseData = '';
+
+      res.on('data', (chunk) => {
+        responseData += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          const parsedData = responseData ? JSON.parse(responseData) : {};
+          resolve({
+            statusCode: res.statusCode,
+            headers: res.headers,
+            data: parsedData
+          });
+        } catch (parseError) {
+          resolve({
+            statusCode: res.statusCode,
+            headers: res.headers,
+            data: { message: responseData }
+          });
+        }
+      });
+    });
+
+    req.on('error', (error) => {
+      console.error('🔴 KRA HTTPS request error:', error);
       reject(error);
     });
 
@@ -355,6 +410,123 @@ app.post('/dmvic/certificate/get', async (req, res) => {
   }
 });
 
+// KRA Token Generation endpoint
+app.post('/kra/token/generate', validateApiKey, async (req, res) => {
+  try {
+    // Get KRA credentials from environment
+    const kraUsername = process.env.KRA_USERNAME;
+    const kraPassword = process.env.KRA_PASSWORD;
+    
+    if (!kraUsername || !kraPassword) {
+      return res.status(500).json({
+        error: 'Configuration error',
+        message: 'KRA credentials not configured'
+      });
+    }
+    
+    // Create Basic auth header from username and password
+    const credentials = Buffer.from(`${kraUsername}:${kraPassword}`).toString('base64');
+    
+    // Make the HTTPS request to KRA API
+    const result = await makeKRARequest({
+      url: 'https://sbx.kra.go.ke/v1/token/generate?grant_type=client_credentials',
+      method: 'GET',
+      headers: {
+        'Authorization': `Basic ${credentials}`,
+        'User-Agent': 'FlexySure-KRA-Proxy/1.0'
+      }
+    });
+
+    // Return the response from KRA
+    res.status(result.statusCode).json(result.data);
+
+  } catch (error) {
+    console.error('❌ Error in KRA token generation:', error);
+
+    // Handle different types of errors
+    if (error.code === 'ENOTFOUND') {
+      return res.status(500).json({
+        error: 'Network error',
+        message: 'Unable to connect to KRA API'
+      });
+    }
+
+    if (error.response) {
+      console.error('🔴 KRA API error:', error.response.status, error.response.data);
+      return res.status(error.response.status).json({
+        error: 'KRA API error',
+        message: error.response.data || error.message,
+        status: error.response.status
+      });
+    }
+
+    // Generic error
+    res.status(500).json({
+      error: 'KRA token generation failed',
+      message: error.message
+    });
+  }
+});
+
+// KRA PIN Validation endpoint
+app.post('/kra/pin/validate', validateApiKey, async (req, res) => {
+  try {
+    const { kraPin, accessToken } = req.body;
+
+    // Validate required fields
+    if (!kraPin || !accessToken) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        required: ['kraPin', 'accessToken']
+      });
+    }
+
+    // Make the HTTPS request to KRA API
+    const result = await makeKRARequest({
+      url: 'https://sbx.kra.go.ke/checker/v1/pinbypin',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+        'Cookie': 'BIGipServer~k8sqa02~Shared~itax_epromis_svc_8180_itax_uat_int_itaxuat_kra_go_ke=621138442.62495.0000',
+        'User-Agent': 'FlexySure-KRA-Proxy/1.0'
+      },
+      data: {
+        KRAPIN: kraPin
+      }
+    });
+
+    // Return the response from KRA
+    res.status(result.statusCode).json(result.data);
+
+  } catch (error) {
+    console.error('❌ Error in KRA PIN validation:', error);
+
+    // Handle different types of errors
+    if (error.code === 'ENOTFOUND') {
+      return res.status(500).json({
+        error: 'Network error',
+        message: 'Unable to connect to KRA API'
+      });
+    }
+
+    if (error.response) {
+      console.error('🔴 KRA API error:', error.response.status, error.response.data);
+      return res.status(error.response.status).json({
+        error: 'KRA API error',
+        message: error.response.data || error.message,
+        status: error.response.status
+      });
+    }
+
+    // Generic error
+    res.status(500).json({
+      error: 'KRA PIN validation failed',
+      message: error.message
+    });
+  }
+});
+
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({
@@ -364,7 +536,9 @@ app.use('*', (req, res) => {
       'GET /health',
       'POST /dmvic/certificate/issue',
       'POST /dmvic/certificate/confirm',
-      'POST /dmvic/certificate/get'
+      'POST /dmvic/certificate/get',
+      'POST /kra/token/generate',
+      'POST /kra/pin/validate'
     ]
   });
 });
